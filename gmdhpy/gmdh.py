@@ -16,27 +16,29 @@ http://www.gmdh.net/
 author: 'Konstantin Kolokolov'
 
 """
-from __future__ import print_function
-import numpy as np
-import sys
+
 import multiprocessing as mp
-import six
+import sys
 import time
+from collections import namedtuple
+from itertools import islice, chain
+from multiprocessing import Pool
+
 import math
 import matplotlib.pyplot as plt
-
-from gmdhpy.neuron import RefFunctionType, CriterionType
-from gmdhpy.neuron import Layer, LayerCreationError
-from gmdhpy.data_preprocessing import train_preprocessing, predict_preprocessing, split_dataset, SequenceTypeSet
-from gmdhpy.neuron import fit_layer, FitLayerData
+import numpy as np
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from multiprocessing import Pool
-from itertools import islice, chain
-from collections import namedtuple
 
+from gmdhpy.data_preprocessing import train_preprocessing, \
+    predict_preprocessing, split_dataset, SequenceTypeSet
+from gmdhpy.neuron import Layer, LayerCreationError
+from gmdhpy.neuron import RefFunctionType, CriterionType
+from gmdhpy.neuron import fit_layer, FitLayerData
 
-FitData = namedtuple('FitData', ['train_x', 'train_y', 'validate_x', 'validate_y', 'data_x', 'data_y',
-                                 'input_train_x', 'input_validate_x', 'input_data_x'])
+FitData = namedtuple('FitData',
+                     ['train_x', 'train_y', 'validate_x', 'validate_y',
+                      'data_x', 'data_y',
+                      'input_train_x', 'input_validate_x', 'input_data_x'])
 
 
 class BaseSONNParam(object):
@@ -138,6 +140,7 @@ class BaseSONNParam(object):
         all available threads.
 
     """
+
     def __init__(self):
         self.ref_function_types = set()
         self.admix_features = True
@@ -156,29 +159,36 @@ class BaseSONNParam(object):
         self.keep_partial_neurons = False
 
 
-class BaseSONN(object):
-    """Base class for self-organizing deep learning polynomial neural network
+class BaseSONN:
+    """
+    'Base Self Organizing Neural Network'
+    Base class for self-organizing deep learning polynomial neural network
     """
     model_class = None
 
-    def __init__(self, seq_type, ref_functions, criterion_type, feature_names, max_layer_count,
-                 admix_features, manual_best_neurons_selection, min_best_neurons_count, max_best_neurons_count,
-                 criterion_minimum_width, stop_train_epsilon_condition, normalize, layer_err_criterion, l2,
+    def __init__(self, seq_type, ref_functions, criterion_type, feature_names,
+                 max_layer_count,
+                 admix_features, manual_best_neurons_selection,
+                 min_best_neurons_count, max_best_neurons_count,
+                 criterion_minimum_width, stop_train_epsilon_condition,
+                 normalize, layer_err_criterion, l2,
                  verbose, keep_partial_neurons, n_jobs):
-        self.param = BaseSONNParam()                  # parameters
+        self.param = BaseSONNParam()  # parameters
         self.param.seq_type = SequenceTypeSet.get(seq_type)
 
         if isinstance(ref_functions, RefFunctionType):
             self.param.ref_function_types.add(ref_functions)
-        elif not isinstance(ref_functions, six.string_types):
+        elif not isinstance(ref_functions, str):
             for ref_function in ref_functions:
-                self.param.ref_function_types.add(RefFunctionType.get(ref_function))
+                self.param.ref_function_types.add(
+                    RefFunctionType.get(ref_function))
         else:
-            self.param.ref_function_types.add(RefFunctionType.get(ref_functions))
+            self.param.ref_function_types.add(
+                RefFunctionType.get(ref_functions))
 
         self.param.criterion_type = CriterionType.get(criterion_type)
 
-        self.feature_names = feature_names       # name of inputs, used to print model
+        self.feature_names = feature_names  # name of inputs, used to print model
         if isinstance(self.feature_names, np.ndarray):
             self.feature_names = self.feature_names.tolist()
 
@@ -193,10 +203,10 @@ class BaseSONN(object):
         self.param.layer_err_criterion = layer_err_criterion
         self.param.l2 = l2
         self.keep_partial_neurons = keep_partial_neurons
-        self.verbose = verbose # verbose: 0 for no logging to stdout, 1 for logging progress
+        self.verbose = verbose  # verbose: 0 for no logging to stdout, 1 for logging progress
         self.scaler = None
 
-        if isinstance(n_jobs, six.string_types):
+        if isinstance(n_jobs, str):
             if n_jobs == 'max':
                 self.param.n_jobs = mp.cpu_count()
             else:
@@ -204,14 +214,16 @@ class BaseSONN(object):
         else:
             self.param.n_jobs = max(1, min(mp.cpu_count(), n_jobs))
 
-        self.l_count = 0        # number of best neurons to be selected
-        self.layers = []        #: :type: list of Layer
-        self.n_features = 0     # number of original features
-        self.n_train = 0        # number of train samples
-        self.n_validate = 0         # number of validate samples
+        self.l_count = 0  # number of best neurons to be selected
+        self.layers = []  #: :type: list of Layer
+        self.n_features = 0  # number of original features
+        self.n_train = 0  # number of train samples
+        self.n_validate = 0  # number of validate samples
 
-        self.layer_err = np.array([], dtype=np.double)          # array of layer's errors
-        self.train_layer_err = np.array([], dtype=np.double)    # array of layer's train errors
+        self.layer_err = np.array([],
+                                  dtype=np.double)  # array of layer's errors
+        self.train_layer_err = np.array([],
+                                        dtype=np.double)  # array of layer's train errors
         self.valid = False
         self.loss = None
 
@@ -229,8 +241,10 @@ class BaseSONN(object):
         """
 
         if self.param.manual_best_neurons_selection:
-            layer.l_count = max(layer.l_count, self.param.min_best_neurons_count)
-            layer.l_count = min(layer.l_count, self.param.max_best_neurons_count)
+            layer.l_count = max(layer.l_count,
+                                self.param.min_best_neurons_count)
+            layer.l_count = min(layer.l_count,
+                                self.param.max_best_neurons_count)
 
         # the number of selected best neurons can't be larger than the
         # total number of neurons in the layer
@@ -261,12 +275,12 @@ class BaseSONN(object):
         else:
             raise NotImplementedError
 
-        den = 1.0/float(len(layer))
+        den = 1.0 / float(len(layer))
         for neuron in layer:
             if neuron.valid:
                 if self.param.layer_err_criterion == 'avg':
-                    layer.err += den*neuron.get_error()
-                    layer.train_err += den*neuron.train_err
+                    layer.err += den * neuron.get_error()
+                    layer.train_err += den * neuron.train_err
                 elif self.param.layer_err_criterion == 'top':
                     layer.train_err = min(layer.train_err, neuron.train_err)
                 else:
@@ -296,22 +310,28 @@ class BaseSONN(object):
 
                 # y = w0 + w1*x1 + w2*x2
                 if RefFunctionType.rfLinear in self.param.ref_function_types:
-                    layer.add_neuron(u1, u2, RefFunctionType.rfLinear, self.model_class, self.loss)
+                    layer.add_neuron(u1, u2, RefFunctionType.rfLinear,
+                                     self.model_class, self.loss)
 
                 # y = w0 + w1*x1 + w2*x2 + w3*x1*x2
                 if RefFunctionType.rfLinearCov in self.param.ref_function_types:
-                    layer.add_neuron(u1, u2, RefFunctionType.rfLinearCov, self.model_class, self.loss)
+                    layer.add_neuron(u1, u2, RefFunctionType.rfLinearCov,
+                                     self.model_class, self.loss)
 
                 # y = full polynom of the 2-nd degree
                 if RefFunctionType.rfQuadratic in self.param.ref_function_types:
-                    layer.add_neuron(u1, u2, RefFunctionType.rfQuadratic, self.model_class, self.loss)
+                    layer.add_neuron(u1, u2, RefFunctionType.rfQuadratic,
+                                     self.model_class, self.loss)
 
                 # y = full polynom of the 3-rd degree
                 if RefFunctionType.rfCubic in self.param.ref_function_types:
-                    layer.add_neuron(u1, u2, RefFunctionType.rfCubic, self.model_class, self.loss)
+                    layer.add_neuron(u1, u2, RefFunctionType.rfCubic,
+                                     self.model_class, self.loss)
 
         if len(layer) == 0:
-            raise LayerCreationError('Error creating layer. No functions were created', layer.layer_index)
+            raise LayerCreationError(
+                'Error creating layer. No functions were created',
+                layer.layer_index)
 
         return layer
 
@@ -326,7 +346,8 @@ class BaseSONN(object):
         """
         for neuron in layer:
             # Train the neuron using all data (train and validate sets)
-            neuron.w = neuron.fit_function(fit_data.data_x, fit_data.data_y, fit_params)
+            neuron.w = neuron.fit_function(fit_data.data_x, fit_data.data_y,
+                                           fit_params)
 
     @staticmethod
     def batch(items, n):
@@ -341,7 +362,7 @@ class BaseSONN(object):
         return list(iter(lambda: tuple(islice(it_items, size)), ()))
 
     def _create_layer(self, pool, fit_data):
-        """Create new layer, calculate neurons weights, select best neurons
+        """Create new layer and calculate neurons weights then select best neurons
         :param pool
         :type pool: Pool
         :param fit_data
@@ -352,15 +373,24 @@ class BaseSONN(object):
 
         if len(self.layers) > 0:
             prev_layer = self.layers[-1]
-            train_x = self._set_internal_data(prev_layer, fit_data.input_train_x, fit_data.train_x)
-            validate_x = self._set_internal_data(prev_layer, fit_data.input_validate_x, fit_data.validate_x)
+            train_x = self._set_internal_data(prev_layer,
+                                              fit_data.input_train_x,
+                                              fit_data.train_x)
+            validate_x = self._set_internal_data(prev_layer,
+                                                 fit_data.input_validate_x,
+                                                 fit_data.validate_x)
             if self.refit_required:
-                layer_data_x = self._set_internal_data(prev_layer, fit_data.input_data_x, fit_data.data_x)
+                layer_data_x = self._set_internal_data(prev_layer,
+                                                       fit_data.input_data_x,
+                                                       fit_data.data_x)
             else:
                 layer_data_x = None
-            new_fit_data = FitData(train_x, fit_data.train_y, validate_x, fit_data.validate_y, layer_data_x,
+            new_fit_data = FitData(train_x, fit_data.train_y, validate_x,
+                                   fit_data.validate_y, layer_data_x,
                                    fit_data.data_y,
-                                   fit_data.input_train_x, fit_data.input_validate_x, fit_data.input_data_x)
+                                   fit_data.input_train_x,
+                                   fit_data.input_validate_x,
+                                   fit_data.input_data_x)
         else:
             new_fit_data = fit_data
 
@@ -425,7 +455,8 @@ class BaseSONN(object):
             out_x = np.zeros((data_m, out_size), dtype=np.double)
             for j in range(out_size):
                 neuron = layer[j]
-                out_x[:, j] = neuron.transfer(x[:, neuron.u1_index], x[:, neuron.u2_index], neuron.w)
+                out_x[:, j] = neuron.transfer(x[:, neuron.u1_index],
+                                              x[:, neuron.u2_index], neuron.w)
 
             # if parameter admix_features set to true we need to add original features to
             # the current features of the layer
@@ -440,10 +471,10 @@ class BaseSONN(object):
         :type neuron: PolynomNeuron
         :rtype bool
         """
-        if neuron.layer_index == len(self.layers)-1:
+        if neuron.layer_index == len(self.layers) - 1:
             return neuron.neuron_index > 0
         else:
-            next_layer = self.layers[neuron.layer_index+1]
+            next_layer = self.layers[neuron.layer_index + 1]
             return neuron.neuron_index not in next_layer.input_index_set
 
     def _delete_unused_neuron(self, neuron):
@@ -451,8 +482,8 @@ class BaseSONN(object):
         :param neuron
         :type neuron: PolynomNeuron
         """
-        if neuron.layer_index < len(self.layers)-1:
-            next_layer = self.layers[neuron.layer_index+1]
+        if neuron.layer_index < len(self.layers) - 1:
+            next_layer = self.layers[neuron.layer_index + 1]
             for next_layer_neuron in next_layer:
                 if next_layer_neuron.u1_index >= neuron.neuron_index:
                     next_layer_neuron.u1_index -= 1
@@ -469,7 +500,7 @@ class BaseSONN(object):
         if layers_count == 0:
             return
 
-        layer = self.layers[layers_count-1]
+        layer = self.layers[layers_count - 1]
         for neuron_index, neuron in reversed(list(enumerate(layer))):
             if neuron_index > 0:
                 self._delete_unused_neuron(neuron)
@@ -487,24 +518,28 @@ class BaseSONN(object):
 
         min_error = sys.float_info.max
         error_stopped_decrease = False
+        # Delete all the layers if for some reason there are any around
         del self.layers[:]
         self.valid = False
         error_min_index = 0
+        # If n_jobs > 1 multi-thread, otherwise run in serial
         if self.param.n_jobs > 1:
             pool = Pool(processes=self.param.n_jobs)
         else:
             pool = None
 
         while True:
-            # create layer, calculate all possible neurons and then select the best ones
-            # using specified criterion
+            # create a layer, then calculate all possible neurons,
+            # then select the best ones using specified criterion
             t0 = time.time()
+            # Create a layer
             layer, fit_data = self._create_layer(pool, fit_data)
             t1 = time.time()
             total_time = (t1 - t0)
             if self.verbose == 1:
-                print("train layer{lnum} in {time:0.2f} sec".format(lnum=layer.layer_index,
-                                                                    time=total_time))
+                print("train layer{lnum} in {time:0.2f} sec".format(
+                    lnum=layer.layer_index,
+                    time=total_time))
 
             # proceed until stop condition is fulfilled
 
@@ -513,12 +548,13 @@ class BaseSONN(object):
                 error_min_index = layer.layer_index
 
             if layer.err > min_error and layer.layer_index > 0 and \
-                                    layer.layer_index - error_min_index >= self.param.criterion_minimum_width:
+                    layer.layer_index - error_min_index >= self.param.criterion_minimum_width:
                 # layer error stopped decreasing
                 error_stopped_decrease = True
 
             if layer.layer_index > 0 and layer.err < min_error and min_error > 0:
-                if (min_error - layer.err) / min_error < self.param.stop_train_epsilon_condition:
+                if (
+                        min_error - layer.err) / min_error < self.param.stop_train_epsilon_condition:
                     # layer relative error decrease value is below stop condition
                     error_stopped_decrease = True
 
@@ -526,7 +562,8 @@ class BaseSONN(object):
 
             # if error does not decrease anymore or number of layers reached the limit
             # or the layer does not have any valid neuron - stop training
-            if error_stopped_decrease or not (layer.layer_index < self.param.max_layer_count - 1) or \
+            if error_stopped_decrease or not (
+                    layer.layer_index < self.param.max_layer_count - 1) or \
                     not layer.valid:
                 self.valid = True
                 break
@@ -589,8 +626,12 @@ class BaseSONN(object):
         if verbose is not None:
             self.verbose = verbose
 
-        data_x, data_y = train_preprocessing(data_x, data_y, self.feature_names)
+        # Data validation step
+        data_x, data_y = train_preprocessing(data_x, data_y,
+                                             self.feature_names)
 
+        # If no validation data is provided split the data set based on
+        # sequence type, other validate it in preproc
         if validation_data is None:
             input_train_x, train_y, input_validate_x, validate_y = split_dataset(
                 data_x, data_y, self.param.seq_type)
@@ -604,24 +645,32 @@ class BaseSONN(object):
             data_x = input_data_x
             data_y = np.hstack((train_y, validate_y))
 
-        self.n_features = data_x.shape[1]
-        self.l_count = self.n_features
-        self.n_train = input_train_x.shape[0]
-        self.n_validate = input_validate_x.shape[0]
+        self.n_features = data_x.shape[1]  # number of features
+        self.l_count = self.n_features  # I don't know yet
+        self.n_train = input_train_x.shape[0]  # Number of training observation
+        self.n_validate = input_validate_x.shape[0]  # size of validation data
 
+        # Normalize the data to Standard Scale if not already scaled
         if self.param.normalize:
             self.scaler = StandardScaler()
             input_train_x = self.scaler.fit_transform(input_train_x)
             input_validate_x = self.scaler.transform(input_validate_x)
             input_data_x = self.scaler.transform(input_data_x)
 
-        train_y, validate_y, data_y = self._preprocess_y(train_y, validate_y, data_y)
+        # This method literally just returns itself... no point to it
+        # TODO: Get rid of this
+        train_y, validate_y, data_y = self._preprocess_y(train_y, validate_y,
+                                                         data_y)
+        # Fit the data using the FitData Class which is just a named tuple
         fit_data = FitData(input_train_x, train_y,
                            input_validate_x, validate_y,
                            data_x, data_y,
                            input_train_x, input_validate_x, input_data_x)
 
+        # Check the y data once more before fitting to ensure integrity after
+        # splitting
         self._pre_fit_check(train_y, validate_y)
+        # Use a hidden function for some reason to actually fit the data
         self._fit(fit_data)
         return self
 
@@ -652,16 +701,19 @@ class BaseSONN(object):
 
         # check dimensions
         # check validity of the neuron
-        input_data_x, data_len = predict_preprocessing(input_data_x, self.n_features)
+        input_data_x, data_len = predict_preprocessing(input_data_x,
+                                                       self.n_features)
 
         if self.param.normalize:
-            input_data_x = np.array(self.scaler.transform(input_data_x), copy=True)
+            input_data_x = np.array(self.scaler.transform(input_data_x),
+                                    copy=True)
         layer_data_x = None
 
         prev_layer = None
         # calculate outputs of all layers except the last one
         for n in range(0, len(self.layers)):
-            layer_data_x = self._set_internal_data(prev_layer, input_data_x, layer_data_x)
+            layer_data_x = self._set_internal_data(prev_layer, input_data_x,
+                                                   layer_data_x)
             prev_layer = self.layers[n]
 
         # calculate output for the last layer
@@ -690,16 +742,19 @@ class BaseSONN(object):
 
         # check dimensions
         # check validity of the neuron
-        input_data_x, data_len = predict_preprocessing(input_data_x, self.n_features)
+        input_data_x, data_len = predict_preprocessing(input_data_x,
+                                                       self.n_features)
 
         if self.param.normalize:
-            input_data_x = np.array(self.scaler.transform(input_data_x), copy=True)
+            input_data_x = np.array(self.scaler.transform(input_data_x),
+                                    copy=True)
         layer_data_x = None
 
         prev_layer = None
         # calculate outputs of all layers with indexes up to layer_idx
         for n in range(0, max(1, layer_idx - 1)):
-            layer_data_x = self._set_internal_data(prev_layer, input_data_x, layer_data_x)
+            layer_data_x = self._set_internal_data(prev_layer, input_data_x,
+                                                   layer_data_x)
             prev_layer = self.layers[n]
 
         # calculate output for the last layer
@@ -722,7 +777,7 @@ class BaseSONN(object):
         if self.param.admix_features and len(self.layers) > 1:
             for layer in self.layers[1:]:
                 for neuron in layer:
-                    prev_layer = self.layers[layer.layer_index-1]
+                    prev_layer = self.layers[layer.layer_index - 1]
                     u1_index = neuron.u1_index - prev_layer.l_count
                     u2_index = neuron.u2_index - prev_layer.l_count
                     if u1_index >= 0:
@@ -749,26 +804,34 @@ class BaseSONN(object):
     def get_selected_features(self):
         """Return names of features that was selected as useful for neuron during fit
         """
-        return self._get_features_names_by_index(self.get_selected_features_indices())
+        return self._get_features_names_by_index(
+            self.get_selected_features_indices())
 
     def describe(self):
         """Describe the model"""
         s = ['*' * 50,
              'Model',
              '*' * 50,
-            'Number of layers: {0}'.format(len(self.layers)),
-            'Max possible number of layers: {0}'.format(self.param.max_layer_count),
-            'Model selection criterion: {0}'.format(CriterionType.get_name(self.param.criterion_type)),
-            'Number of features: {0}'.format(self.n_features),
-            'Include features to inputs list for each layer: {0}'.format(self.param.admix_features),
-            'Data size: {0}'.format(self.n_train + self.n_validate),
-            'Train data size: {0}'.format(self.n_train),
-            'Test data size: {0}'.format(self.n_validate),
-            'Selected features by index: {0}'.format(self.get_selected_features_indices()),
-            'Selected features by name: {0}'.format(self.get_selected_features()),
-            'Unselected features by index: {0}'.format(self.get_unselected_features_indices()),
-            'Unselected features by name: {0}'.format(self.get_unselected_features()),
-        ]
+             'Number of layers: {0}'.format(len(self.layers)),
+             'Max possible number of layers: {0}'.format(
+                 self.param.max_layer_count),
+             'Model selection criterion: {0}'.format(
+                 CriterionType.get_name(self.param.criterion_type)),
+             'Number of features: {0}'.format(self.n_features),
+             'Include features to inputs list for each layer: {0}'.format(
+                 self.param.admix_features),
+             'Data size: {0}'.format(self.n_train + self.n_validate),
+             'Train data size: {0}'.format(self.n_train),
+             'Test data size: {0}'.format(self.n_validate),
+             'Selected features by index: {0}'.format(
+                 self.get_selected_features_indices()),
+             'Selected features by name: {0}'.format(
+                 self.get_selected_features()),
+             'Unselected features by index: {0}'.format(
+                 self.get_unselected_features_indices()),
+             'Unselected features by name: {0}'.format(
+                 self.get_unselected_features()),
+             ]
         for layer in self.layers:
             s.append('\n' + layer.describe(self.feature_names, self.layers))
         return '\n'.join(s)
@@ -779,7 +842,8 @@ class BaseSONN(object):
         :type layer_index: int
         :rtype str
         """
-        return self.layers[layer_index].describe(self.feature_names, self.layers)
+        return self.layers[layer_index].describe(self.feature_names,
+                                                 self.layers)
 
     def describe_neuron(self, layer_index, neuron_index):
         """Describe the neuron
@@ -789,7 +853,8 @@ class BaseSONN(object):
         :type neuron_index: int
         :rtype str
         """
-        return self.layers[layer_index][neuron_index].describe(self.feature_names, self.layers)
+        return self.layers[layer_index][neuron_index].describe(
+            self.feature_names, self.layers)
 
     def plot_layer_error(self):
         """Plot layer error on validate set vs layer index
@@ -803,7 +868,7 @@ class BaseSONN(object):
         ax1.set_title('Layer error on validate set')
         plt.xlabel('layer index')
         plt.ylabel('error')
-        idx = len(self.layers)-1
+        idx = len(self.layers) - 1
         plt.plot(x[idx], y[idx], 'rD')
         plt.show()
 
@@ -838,17 +903,28 @@ class Regressor(BaseSONN):
 
     def __init__(self, seq_type=SequenceTypeSet.sqMode1,
                  ref_functions=RefFunctionType.rfLinearCov,
-                 criterion_type=CriterionType.cmpValidate, feature_names=None, max_layer_count=50,
-                 admix_features=True, manual_best_neurons_selection=False, min_best_neurons_count=5,
+                 criterion_type=CriterionType.cmpValidate, feature_names=None,
+                 max_layer_count=50,
+                 admix_features=True, manual_best_neurons_selection=False,
+                 min_best_neurons_count=5,
                  max_best_neurons_count=10000000, criterion_minimum_width=5,
-                 stop_train_epsilon_condition=0.001, normalize=True, layer_err_criterion='top', l2=0.5,
+                 stop_train_epsilon_condition=0.001, normalize=True,
+                 layer_err_criterion='top', l2=0.5,
                  verbose=1, keep_partial_neurons=False, n_jobs=1):
         super(self.__class__, self).__init__(seq_type,
-                 ref_functions,
-                 criterion_type, feature_names, max_layer_count,
-                 admix_features, manual_best_neurons_selection, min_best_neurons_count, max_best_neurons_count,
-                 criterion_minimum_width, stop_train_epsilon_condition, normalize, layer_err_criterion, l2,
-                 verbose, keep_partial_neurons, n_jobs)
+                                             ref_functions,
+                                             criterion_type, feature_names,
+                                             max_layer_count,
+                                             admix_features,
+                                             manual_best_neurons_selection,
+                                             min_best_neurons_count,
+                                             max_best_neurons_count,
+                                             criterion_minimum_width,
+                                             stop_train_epsilon_condition,
+                                             normalize, layer_err_criterion,
+                                             l2,
+                                             verbose, keep_partial_neurons,
+                                             n_jobs)
         self.loss = 'mse'
 
     def predict(self, data_x):
@@ -885,17 +961,28 @@ class Classifier(BaseSONN):
 
     def __init__(self, seq_type=SequenceTypeSet.sqMode1,
                  ref_functions=RefFunctionType.rfLinearCov,
-                 criterion_type=CriterionType.cmpValidate, feature_names=None, max_layer_count=50,
-                 admix_features=True, manual_best_neurons_selection=False, min_best_neurons_count=5,
+                 criterion_type=CriterionType.cmpValidate, feature_names=None,
+                 max_layer_count=50,
+                 admix_features=True, manual_best_neurons_selection=False,
+                 min_best_neurons_count=5,
                  max_best_neurons_count=10000000, criterion_minimum_width=5,
-                 stop_train_epsilon_condition=0.001, normalize=True, layer_err_criterion='top', l2=0.5,
+                 stop_train_epsilon_condition=0.001, normalize=True,
+                 layer_err_criterion='top', l2=0.5,
                  verbose=1, keep_partial_neurons=False, n_jobs=1):
         super(self.__class__, self).__init__(seq_type,
-                 ref_functions,
-                 criterion_type, feature_names, max_layer_count,
-                 admix_features, manual_best_neurons_selection, min_best_neurons_count, max_best_neurons_count,
-                 criterion_minimum_width, stop_train_epsilon_condition, normalize, layer_err_criterion, l2,
-                 verbose, keep_partial_neurons, n_jobs)
+                                             ref_functions,
+                                             criterion_type, feature_names,
+                                             max_layer_count,
+                                             admix_features,
+                                             manual_best_neurons_selection,
+                                             min_best_neurons_count,
+                                             max_best_neurons_count,
+                                             criterion_minimum_width,
+                                             stop_train_epsilon_condition,
+                                             normalize, layer_err_criterion,
+                                             l2,
+                                             verbose, keep_partial_neurons,
+                                             n_jobs)
         self.loss = 'logloss'
         self.le = LabelEncoder()
 
@@ -965,17 +1052,5 @@ class Classifier(BaseSONN):
         return self.le.transform(np.argmax(self.predict_proba(data_x)))
 
 
-#aliases
+# aliases
 MultilayerGMDH = Regressor
-
-
-
-
-
-
-
-
-
-
-
-

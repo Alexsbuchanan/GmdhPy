@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
+from enum import Enum
+
 import numpy as np
 import pandas as pd
-from enum import Enum
+
 
 class SequenceTypeSet(Enum):
     """
@@ -60,49 +62,67 @@ class DataSetType(Enum):
 def train_preprocessing(data_x, data_y, feature_names):
     """process of train input data: transform to numpy matrix, transpose etc"""
 
+    # Convert the training data to numpy arrays if they are a DataFrame
     if isinstance(data_x, pd.DataFrame):
         data_x = data_x.as_matrix()
-
     if isinstance(data_y, pd.DataFrame) or isinstance(data_y, pd.Series):
         data_y = data_y.as_matrix()
 
+    # Do a double check for other possilbe array types to convert to a
+    # numpy array.
     if not isinstance(data_y, (np.ndarray, np.generic)):
         data_y = np.asarray(data_y)
+
+    # Transpose the data if necessary
     if len(data_y.shape) != 1:
         if data_y.shape[0] == 1:
             data_y = data_y[0, :]
         elif data_y.shape[1] == 1:
             data_y = data_y[:, 0]
         else:
-            raise ValueError('data_y dimension should be 1 or (n, 1) or (1, n)')
+            raise ValueError(
+                'data_y dimension should be 1 or (n, 1) or (1, n)')
     data_len = data_y.shape[0]
 
+    # Convert data_x to a numpy array
     if not isinstance(data_x, (np.ndarray, np.generic)):
         data_x = np.asarray(data_x)
 
+    # Ensure that data_x is a 2D array
     if len(data_x.shape) != 2:
-        raise ValueError('data_x dimension has to be 2. it has to be a 2D numpy array: number of features x '
-                         'number of observations')
+        raise ValueError(
+            'data_x dimension has to be 2. it has to be a 2D numpy array: number of features x '
+            'number of observations')
 
+    # Ensure the x and y data have the same number of observations
     if data_x.shape[0] != data_len:
         # try to check if transpose matrix is suitable
         if data_x.shape[1] == data_len:
             # ok, need to transpose data_x
             data_x = data_x.transpose()
         else:
-            raise ValueError('number of examples in data_x is not equal to number of examples in data_y')
+            raise ValueError(
+                'number of examples in data_x is not equal to number of examples in data_y')
 
+    # Must have more than a single feature
     if data_x.shape[1] < 2:
-        raise ValueError('Error: number of features should be not less than two')
+        raise ValueError(
+            'Error: number of features should be not less than two')
 
+    # Must have more than one sample
     if data_x.shape[0] < 2:
-        raise ValueError('Error: number of samples should be not less than two')
+        raise ValueError(
+            'Error: number of samples should be not less than two')
 
+    # Check to make sure the features names match with how many features there
+    # are
     if feature_names is not None:
         feature_names_len = len(feature_names)
         if feature_names_len > 0 and feature_names_len != data_x.shape[1]:
-            raise ValueError('Error: size of feature_names list is not equal to number of features')
+            raise ValueError(
+                'Error: size of feature_names list is not equal to number of features')
 
+    # Finished preproc
     return data_x, data_y
 
 
@@ -116,8 +136,9 @@ def predict_preprocessing(data_x, n_features):
         data_x = np.asarray(data_x)
 
     if len(data_x.shape) != 2:
-        raise ValueError('data_x dimension has to be 2. it has to be a 2D numpy array: number of features x '
-                         'number of observations')
+        raise ValueError(
+            'data_x dimension has to be 2. it has to be a 2D numpy array: number of features x '
+            'number of observations')
 
     if data_x.shape[1] != n_features:
         # try to check if transpose matrix is suitable
@@ -125,7 +146,8 @@ def predict_preprocessing(data_x, n_features):
             # ok, need to transpose data_x
             data_x = data_x.transpose()
         else:
-            raise ValueError('number of features in data_x is not equal to number of features in trained model')
+            raise ValueError(
+                'number of features in data_x is not equal to number of features in trained model')
 
     data_len = data_x.shape[0]
     return data_x, data_len
@@ -139,7 +161,8 @@ def set_split_types(seq_type, data_len):
 
     if seq_type == SequenceTypeSet.sqRandom:
         r = np.random.uniform(-1, 1, data_len)
-        seq_types[:] = np.where(r > 0, DataSetType.dsTrain, DataSetType.dsValidate)
+        seq_types[:] = np.where(r > 0, DataSetType.dsTrain,
+                                DataSetType.dsValidate)
         return seq_types
 
     elif seq_type == SequenceTypeSet.sqMode1:
@@ -155,21 +178,22 @@ def set_split_types(seq_type, data_len):
     elif seq_type == SequenceTypeSet.sqMode4_2:
         n = 4
     else:
-        raise ValueError('Unknown type of data division into train and validate sequences')
+        raise ValueError(
+            'Unknown type of data division into train and validate sequences')
 
     if SequenceTypeSet.is_mode1_type(seq_type):
         for i in range(data_len, 0, -1):
-            if (data_len-i) % n == 0:
-                seq_types[i-1] = DataSetType.dsValidate
+            if (data_len - i) % n == 0:
+                seq_types[i - 1] = DataSetType.dsValidate
             else:
-                seq_types[i-1] = DataSetType.dsTrain
+                seq_types[i - 1] = DataSetType.dsTrain
 
     if SequenceTypeSet.is_mode2_type(seq_type):
         for i in range(data_len, 0, -1):
-            if (data_len-i) % n == 0:
-                seq_types[i-1] = DataSetType.dsTrain
+            if (data_len - i) % n == 0:
+                seq_types[i - 1] = DataSetType.dsTrain
             else:
-                seq_types[i-1] = DataSetType.dsValidate
+                seq_types[i - 1] = DataSetType.dsValidate
     return seq_types
 
 
@@ -180,11 +204,13 @@ def split_dataset(data_x, data_y, seq_type):
 
     seq_types = set_split_types(seq_type, data_len)
 
-    idx_train = np.extract(DataSetType.dsTrain == seq_types, np.arange(data_len))
+    idx_train = np.extract(DataSetType.dsTrain == seq_types,
+                           np.arange(data_len))
     input_train_x = data_x[idx_train, :]
     train_y = data_y[idx_train]
 
-    idx_validate = np.extract(DataSetType.dsValidate == seq_types, np.arange(data_len))
+    idx_validate = np.extract(DataSetType.dsValidate == seq_types,
+                              np.arange(data_len))
     input_validate_x = data_x[idx_validate, :]
     validate_y = data_y[idx_validate]
 
